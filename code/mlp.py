@@ -398,6 +398,17 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                 break
 
     end_time = timeit.default_timer()
+    
+    from utils import tile_raster_images
+    import PIL.Image as Image
+    hidden_image = Image.fromarray(
+        tile_raster_images(X=classifier.hiddenLayer.W.get_value(borrow=True).T,
+                           img_shape=(28, 28), tile_shape=(25, 20),
+                           tile_spacing=(1, 1)))
+     
+    hidden_image.save('hidden_filters.png')
+    
+    
     print(('Optimization complete. Best validation score of %f %% '
            'obtained at iteration %i, with test performance %f %%') %
           (best_validation_loss * 100., best_iter + 1, test_score * 100.))
