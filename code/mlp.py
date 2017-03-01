@@ -199,7 +199,7 @@ class MLP(object):
 
 
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
-             dataset='mnist.pkl.gz', batch_size=20, n_hidden=500):
+             dataset='mnist.pkl.gz', batch_size=20, n_hidden=500, out_dir='../visualization'):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
@@ -398,17 +398,6 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                 break
 
     end_time = timeit.default_timer()
-    
-    from utils import tile_raster_images
-    import PIL.Image as Image
-    hidden_image = Image.fromarray(
-        tile_raster_images(X=classifier.hiddenLayer.W.get_value(borrow=True).T,
-                           img_shape=(28, 28), tile_shape=(25, 20),
-                           tile_spacing=(1, 1)))
-     
-    hidden_image.save('hidden_filters.png')
-    
-    
     print(('Optimization complete. Best validation score of %f %% '
            'obtained at iteration %i, with test performance %f %%') %
           (best_validation_loss * 100., best_iter + 1, test_score * 100.))
@@ -417,5 +406,19 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
            ' ran for %.2fm' % ((end_time - start_time) / 60.)), file=sys.stderr)
 
 
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+        
+    from utils import tile_raster_images
+    import PIL.Image as Image
+    hidden_image = Image.fromarray(
+        tile_raster_images(X=classifier.hiddenLayer.W.get_value(borrow=True).T,
+                           img_shape=(28, 28), tile_shape=(25, 20),
+                           tile_spacing=(1, 1)))
+      
+    hidden_image.save('%s/mlp.hidden.png' % out_dir)  
+     
+   
+ 
 if __name__ == '__main__':
     test_mlp()
