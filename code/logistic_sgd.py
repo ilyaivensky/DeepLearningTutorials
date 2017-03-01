@@ -255,7 +255,7 @@ def load_data(dataset):
 
 def sgd_optimization_mnist(learning_rate=0.13, n_epochs=1000,
                            dataset='mnist.pkl.gz',
-                           batch_size=600):
+                           batch_size=600, out_dir='../visualization'):
     """
     Demonstrate stochastic gradient descent optimization of a log-linear
     model
@@ -445,6 +445,18 @@ def sgd_optimization_mnist(learning_rate=0.13, n_epochs=1000,
            os.path.split(__file__)[1] +
            ' ran for %.1fs' % ((end_time - start_time))), file=sys.stderr)
 
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+        
+    from utils import tile_raster_images
+    import PIL.Image as Image
+    
+    image = Image.fromarray(
+        tile_raster_images(X=classifier.W.get_value(borrow=True).T,
+                           img_shape=(28, 28), tile_shape=(5, 2),
+                           tile_spacing=(1, 1)))
+     
+    image.save('%s/logistic_sgd.png' % out_dir)
 
 def predict():
     """
