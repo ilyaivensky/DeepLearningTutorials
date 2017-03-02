@@ -119,7 +119,8 @@ class LeNetConvPoolLayer(object):
 
 def evaluate_lenet5(learning_rate=0.1, n_epochs=200,
                     dataset='mnist.pkl.gz',
-                    nkerns=[20, 50], batch_size=500):
+                    nkerns=[20, 50], batch_size=500,
+                    out_dir='../visualization'):
     """ Demonstrates lenet on MNIST dataset
 
     :type learning_rate: float
@@ -233,6 +234,22 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=200,
             y: valid_set_y[index * batch_size: (index + 1) * batch_size]
         }
     )
+    
+    visualize_layer0 = theano.function(
+        [index],
+        layer0.output,
+        givens={
+            x: valid_set_x[index * batch_size: (index + 1) * batch_size]
+        }
+    )
+    
+    visualize_layer1 = theano.function(
+        [index],
+        layer1.output,
+        givens={
+            x: valid_set_x[index * batch_size: (index + 1) * batch_size]
+        }
+    )
 
     # create a list of all model parameters to be fit by gradient descent
     params = layer3.params + layer2.params + layer1.params + layer0.params
@@ -340,6 +357,56 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=200,
     print(('The code for file ' +
            os.path.split(__file__)[1] +
            ' ran for %.2fm' % ((end_time - start_time) / 60.)), file=sys.stderr)
+    
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+    
+    from utils import tile_raster_images
+    import PIL.Image as Image
+
+    layer0_activation = visualize_layer0(0)
+    layer1_activation = visualize_layer1(0)
+    
+    l0_img_shape = (12, 12)
+    l1_img_shape = (4, 4)
+    l0_tile_shape = (1, nkerns[0])
+    l1_tile_shape = (1, nkerns[1])
+    tile_spacing=(1, 1)
+    sample_size = 50
+    
+    l0_out_shape = [
+        (ishp + tsp) * tshp - tsp
+        for ishp, tshp, tsp in zip(l0_img_shape, l0_tile_shape, tile_spacing)
+    ]
+    
+    l1_out_shape = [
+        (ishp + tsp) * tshp - tsp
+        for ishp, tshp, tsp in zip(l1_img_shape, l1_tile_shape, tile_spacing)
+    ]
+    
+    l0_out_array = numpy.zeros(((l0_out_shape[0] + tile_spacing[0]) * sample_size - tile_spacing[0], l0_out_shape[1]),
+                                    dtype='uint8')
+    
+    l1_out_array = numpy.zeros(((l1_out_shape[0] + tile_spacing[0]) * sample_size - tile_spacing[0], l1_out_shape[1]),
+                                    dtype='uint8')
+
+    for i in range (sample_size):
+        offset = (l0_out_shape[0] + tile_spacing[0]) * i
+        l0_out_array[offset : offset + l0_out_shape[0],:] = tile_raster_images(X=layer0_activation[i],
+                           img_shape=l0_img_shape, tile_shape=l0_tile_shape,
+                           tile_spacing=tile_spacing)
+        
+    layer0_image = Image.fromarray(l0_out_array)
+    layer0_image.save('%s/convolutional_mlp.layer0.png' % out_dir)
+    
+    for i in range (sample_size):
+        offset = (l1_out_shape[0] + tile_spacing[0]) * i
+        l1_out_array[offset : offset + l1_out_shape[0]:,:] = tile_raster_images(X=layer1_activation[i],
+                           img_shape=l1_img_shape, tile_shape=l1_tile_shape,
+                           tile_spacing=tile_spacing)
+        
+    layer1_image = Image.fromarray(l1_out_array)                               
+    layer1_image.save('%s/convolutional_mlp.layer1.png' % out_dir)
 
 if __name__ == '__main__':
     evaluate_lenet5()
