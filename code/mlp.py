@@ -33,169 +33,9 @@ import numpy
 import theano
 import theano.tensor as T
 
+import lasagne
 
-from logistic_sgd import LogisticRegression, load_data
-
-
-# start-snippet-1
-class HiddenLayer(object):
-    def __init__(self, rng, input, n_in, n_out, W=None, b=None,
-                 activation=T.tanh):
-        """
-        Typical hidden layer of a MLP: units are fully-connected and have
-        sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
-        and the bias vector b is of shape (n_out,).
-
-        NOTE : The nonlinearity used here is tanh
-
-        Hidden unit activation is given by: tanh(dot(input,W) + b)
-
-        :type rng: numpy.random.RandomState
-        :param rng: a random number generator used to initialize weights
-
-        :type input: theano.tensor.dmatrix
-        :param input: a symbolic tensor of shape (n_examples, n_in)
-
-        :type n_in: int
-        :param n_in: dimensionality of input
-
-        :type n_out: int
-        :param n_out: number of hidden units
-
-        :type activation: theano.Op or function
-        :param activation: Non linearity to be applied in the hidden
-                           layer
-        """
-        self.input = input
-        # end-snippet-1
-
-        # `W` is initialized with `W_values` which is uniformely sampled
-        # from sqrt(-6./(n_in+n_hidden)) and sqrt(6./(n_in+n_hidden))
-        # for tanh activation function
-        # the output of uniform if converted using asarray to dtype
-        # theano.config.floatX so that the code is runable on GPU
-        # Note : optimal initialization of weights is dependent on the
-        #        activation function used (among other things).
-        #        For example, results presented in [Xavier10] suggest that you
-        #        should use 4 times larger initial weights for sigmoid
-        #        compared to tanh
-        #        We have no info for other function, so we use the same as
-        #        tanh.
-        if W is None:
-            W_values = numpy.asarray(
-                rng.uniform(
-                    low=-numpy.sqrt(6. / (n_in + n_out)),
-                    high=numpy.sqrt(6. / (n_in + n_out)),
-                    size=(n_in, n_out)
-                ),
-                dtype=theano.config.floatX
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                W_values *= 4
-
-            W = theano.shared(value=W_values, name='W', borrow=True)
-
-        if b is None:
-            b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
-            b = theano.shared(value=b_values, name='b', borrow=True)
-
-        self.W = W
-        self.b = b
-
-        lin_output = T.dot(input, self.W) + self.b
-        self.output = (
-            lin_output if activation is None
-            else activation(lin_output)
-        )
-        # parameters of the model
-        self.params = [self.W, self.b]
-
-
-# start-snippet-2
-class MLP(object):
-    """Multi-Layer Perceptron Class
-
-    A multilayer perceptron is a feedforward artificial neural network model
-    that has one layer or more of hidden units and nonlinear activations.
-    Intermediate layers usually have as activation function tanh or the
-    sigmoid function (defined here by a ``HiddenLayer`` class)  while the
-    top layer is a softmax layer (defined here by a ``LogisticRegression``
-    class).
-    """
-
-    def __init__(self, rng, input, n_in, n_hidden, n_out):
-        """Initialize the parameters for the multilayer perceptron
-
-        :type rng: numpy.random.RandomState
-        :param rng: a random number generator used to initialize weights
-
-        :type input: theano.tensor.TensorType
-        :param input: symbolic variable that describes the input of the
-        architecture (one minibatch)
-
-        :type n_in: int
-        :param n_in: number of input units, the dimension of the space in
-        which the datapoints lie
-
-        :type n_hidden: int
-        :param n_hidden: number of hidden units
-
-        :type n_out: int
-        :param n_out: number of output units, the dimension of the space in
-        which the labels lie
-
-        """
-
-        # Since we are dealing with a one hidden layer MLP, this will translate
-        # into a HiddenLayer with a tanh activation function connected to the
-        # LogisticRegression layer; the activation function can be replaced by
-        # sigmoid or any other nonlinear function
-        self.hiddenLayer = HiddenLayer(
-            rng=rng,
-            input=input,
-            n_in=n_in,
-            n_out=n_hidden,
-            activation=T.tanh
-        )
-
-        # The logistic regression layer gets as input the hidden units
-        # of the hidden layer
-        self.logRegressionLayer = LogisticRegression(
-            input=self.hiddenLayer.output,
-            n_in=n_hidden,
-            n_out=n_out
-        )
-        # end-snippet-2 start-snippet-3
-        # L1 norm ; one regularization option is to enforce L1 norm to
-        # be small
-        self.L1 = (
-            abs(self.hiddenLayer.W).sum()
-            + abs(self.logRegressionLayer.W).sum()
-        )
-
-        # square of L2 norm ; one regularization option is to enforce
-        # square of L2 norm to be small
-        self.L2_sqr = (
-            (self.hiddenLayer.W ** 2).sum()
-            + (self.logRegressionLayer.W ** 2).sum()
-        )
-
-        # negative log likelihood of the MLP is given by the negative
-        # log likelihood of the output of the model, computed in the
-        # logistic regression layer
-        self.negative_log_likelihood = (
-            self.logRegressionLayer.negative_log_likelihood
-        )
-        # same holds for the function computing the number of errors
-        self.errors = self.logRegressionLayer.errors
-
-        # the parameters of the model are the parameters of the two layer it is
-        # made out of
-        self.params = self.hiddenLayer.params + self.logRegressionLayer.params
-        # end-snippet-3
-
-        # keep track of model input
-        self.input = input
+from logistic_sgd import load_data
 
 
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
@@ -250,32 +90,55 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                         # [int] labels
 
     rng = numpy.random.RandomState(1234)
+    lasagne.random.set_rng(rng)
+    
+    drop_input = False
+    drop_hidden = False
+    depth=1
 
-    # construct the MLP class
-    classifier = MLP(
-        rng=rng,
-        input=x,
-        n_in=28 * 28,
-        n_hidden=n_hidden,
-        n_out=10
-    )
+    # build network
+    network = lasagne.layers.InputLayer(shape=(1, 784),
+                                     input_var=x)
+    
+    if drop_input:
+        network = lasagne.layers.dropout(network, p=drop_input)
+    # Hidden layers and dropout:
+    nonlin = lasagne.nonlinearities.tanh
+    for _ in range(depth):
+        network = lasagne.layers.DenseLayer(
+                network, n_hidden, nonlinearity=nonlin, 
+                #equivalent of rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out)),high=numpy.sqrt(6. / (n_in + n_out)),size=(n_in, n_out)),
+                W=lasagne.init.GlorotUniform('relu'), 
+                b=lasagne.init.Constant(0.0))
+        if drop_hidden:
+            network = lasagne.layers.dropout(network, p=drop_hidden)
+    # Output layer:
+    softmax = lasagne.nonlinearities.softmax
+    network = lasagne.layers.DenseLayer(network, 10, nonlinearity=softmax, 
+                                        W=lasagne.init.Constant(0.0),
+                                        b=lasagne.init.Constant(0.0))
+    
+    layers = lasagne.layers.get_all_layers(network)
+    l2_penalty = lasagne.regularization.regularize_layer_params(layers[1:], lasagne.regularization.l2) * L2_reg
+    l1_penalty = lasagne.regularization.regularize_layer_params(layers[1:], lasagne.regularization.l1) * L1_reg
+    
+    prediction = lasagne.layers.get_output(network)
+    loss = lasagne.objectives.categorical_crossentropy(prediction, y) + \
+        l2_penalty + l1_penalty
+    loss = loss.mean()
+    
+    params = lasagne.layers.get_all_params(network, trainable=True)
+    updates = lasagne.updates.sgd(
+        loss, params, learning_rate=learning_rate)
 
-    # start-snippet-4
-    # the cost we minimize during training is the negative log likelihood of
-    # the model plus the regularization terms (L1 and L2); cost is expressed
-    # here symbolically
-    cost = (
-        classifier.negative_log_likelihood(y)
-        + L1_reg * classifier.L1
-        + L2_reg * classifier.L2_sqr
-    )
-    # end-snippet-4
-
+    test_prediction = T.argmax(lasagne.layers.get_output(network, deterministic=True), axis=1)
+    test_loss = T.mean(T.neq(test_prediction, y))
+    
     # compiling a Theano function that computes the mistakes that are made
     # by the model on a minibatch
     test_model = theano.function(
         inputs=[index],
-        outputs=classifier.errors(y),
+        outputs=test_loss,
         givens={
             x: test_set_x[index * batch_size:(index + 1) * batch_size],
             y: test_set_y[index * batch_size:(index + 1) * batch_size]
@@ -284,43 +147,26 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     validate_model = theano.function(
         inputs=[index],
-        outputs=classifier.errors(y),
+        outputs=test_loss,
         givens={
             x: valid_set_x[index * batch_size:(index + 1) * batch_size],
             y: valid_set_y[index * batch_size:(index + 1) * batch_size]
         }
     )
 
-    # start-snippet-5
-    # compute the gradient of cost with respect to theta (sorted in params)
-    # the resulting gradients will be stored in a list gparams
-    gparams = [T.grad(cost, param) for param in classifier.params]
-
-    # specify how to update the parameters of the model as a list of
-    # (variable, update expression) pairs
-
-    # given two lists of the same length, A = [a1, a2, a3, a4] and
-    # B = [b1, b2, b3, b4], zip generates a list C of same size, where each
-    # element is a pair formed from the two lists :
-    #    C = [(a1, b1), (a2, b2), (a3, b3), (a4, b4)]
-    updates = [
-        (param, param - learning_rate * gparam)
-        for param, gparam in zip(classifier.params, gparams)
-    ]
-
+    
     # compiling a Theano function `train_model` that returns the cost, but
     # in the same time updates the parameter of the model based on the rules
     # defined in `updates`
     train_model = theano.function(
         inputs=[index],
-        outputs=cost,
+        outputs=loss,
         updates=updates,
         givens={
             x: train_set_x[index * batch_size: (index + 1) * batch_size],
             y: train_set_y[index * batch_size: (index + 1) * batch_size]
         }
     )
-    # end-snippet-5
 
     ###############
     # TRAIN MODEL #
